@@ -40,7 +40,7 @@
       <div class="brand"><div class="logo">↗</div><div><h1>Keuangan Pribadi</h1><p>Ringkas, sadar, terencana.</p></div></div>
       <div class="userbox"><span class="pill">Data akun pribadi</span><button id="logoutBtn" class="secondary">Keluar</button></div>
     </header>
-    <div class="notice">Tahap awal: autentikasi sudah terhubung. Transaksi di bawah disimpan di browser perangkat ini untuk prototipe; belum disinkronkan ke Supabase. Hindari memasukkan data keuangan sensitif sebelum sinkronisasi database diaktifkan.</div>
+    <div id="cloudStatus" class="notice">Menghubungkan data ke Supabase…</div>
     <div class="layout">
       <aside class="side" aria-label="Menu utama">
         <button class="nav active" data-view="dashboard"><span class="ico">⌂</span>Ringkasan</button>
@@ -50,7 +50,7 @@
         <button class="nav" data-view="debts"><span class="ico">↔</span>Utang & piutang</button>
         <button class="nav" data-view="assets"><span class="ico">◇</span>Aset</button>
         <button class="nav" data-view="reports"><span class="ico">▥</span>Laporan</button>
-        <div class="side-note">Versi awal · Data lokal per browser</div>
+        <div class="side-note">Supabase · Sinkronisasi cloud</div>
       </aside>
       <section>
         <div id="page-dashboard">
@@ -78,7 +78,7 @@
 
         <div id="page-accounts" class="hidden">
           <div class="heading"><div><h2>Rekening</h2><p>Kelola sumber saldo yang kamu gunakan.</p></div></div>
-          <div class="panel"><h3>Ringkasan rekening</h3><div id="accountList"></div><p class="auth-foot">Rekening masih berupa kategori sederhana dalam prototipe. Pengelolaan rekening tersimpan di Supabase akan ditambahkan setelah alur dasar disepakati.</p></div>
+          <div class="panel"><h3>Ringkasan rekening</h3><div id="accountList"></div><p class="auth-foot">Saldo dihitung dari saldo awal ditambah pemasukan dan dikurangi pengeluaran yang tercatat.</p></div>
         </div>
 
         <div id="page-budgets" class="hidden"><div class="heading"><div><h2>Anggaran</h2><p>Tentukan batas pengeluaran per bulan.</p></div></div><div class="panel"><h3>Anggaran bulanan</h3><form id="budgetForm"><div class="form-grid"><div class="field"><label for="budgetCategory">Kategori</label><select id="budgetCategory"><option>Makanan</option><option>Transportasi</option><option>Tagihan</option><option>Belanja</option><option>Kesehatan</option><option>Hiburan</option><option>Lainnya</option></select></div><div class="field"><label for="budgetAmount">Batas anggaran (Rp)</label><input id="budgetAmount" type="number" min="1" required></div></div><div class="actions"><button>Simpan anggaran</button></div></form></div><div class="panel"><h3>Anggaran berjalan</h3><div id="budgetList"></div></div></div>
@@ -94,6 +94,7 @@
 
 <script type="module">
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { initSupabaseApp } from './cloud-app.js';
 
 // Public publishable/anon key belongs in a browser app; never use a service_role/secret key here.
 const SUPABASE_URL = 'https://oygogokxwmdcmaaccevc.supabase.co';
@@ -161,8 +162,19 @@ async function showSignedIn(user){
   // Supabase can emit several auth events for the same session; initialise UI only once per user session.
   if(initializedUserId===user.id) return;
   initializedUserId=user.id;
-  initLocalPrototype(user.id);
+  try {
+    await initSupabaseApp({supabase,userId:user.id,rupiah,dateToday,monthNow});
+  } catch(error) {
+    initializedUserId=null;
+    console.error('Gagal memuat data Supabase:', error);
+    const status=document.querySelector('#cloudStatus');
+    status.textContent='Data belum dapat dimuat dari Supabase: '+(error.message||'Kesalahan tidak diketahui')+'. Coba muat ulang halaman.';
+    status.style.background='#fff0f0';status.style.color='#a52f38';
+  }
 }
+const rupiah=value=>new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(value)||0);
+const dateToday=()=>new Date().toLocaleDateString('en-CA');
+const monthNow=()=>dateToday().slice(0,7);
 if(SUPABASE_PUBLISHABLE_KEY && !SUPABASE_PUBLISHABLE_KEY.includes('TEMPEL_')){
   supabase=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
   const {data:{session}}=await supabase.auth.getSession();
@@ -175,110 +187,8 @@ if(SUPABASE_PUBLISHABLE_KEY && !SUPABASE_PUBLISHABLE_KEY.includes('TEMPEL_')){
   setAuthMessage('Isi Supabase Publishable key untuk mengaktifkan login.');
 }
 
-const rupiah=value=>new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(value)||0);
-const dateToday=()=>new Date().toLocaleDateString('en-CA');
-const monthNow=()=>dateToday().slice(0,7);
-function initLocalPrototype(userId){
-  const storageKey='kp-prototype-v1:'+userId;
-  const read=()=>{try{return JSON.parse(localStorage.getItem(storageKey))||{transactions:[],budgets:[],debts:[],assets:[]}}catch{return {transactions:[],budgets:[],debts:[],assets:[]}}};
-  let data=read();
-  const save=()=>{localStorage.setItem(storageKey,JSON.stringify(data));renderAll();};
-  document.querySelector('#todayLabel').textContent=new Date().toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  document.querySelector('#txDate').value=dateToday();
-  document.querySelector('#reportMonth').value=monthNow();
 
-  const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  function table(rows,headers){
-    if(!rows.length)return '<div class="empty">Belum ada data untuk ditampilkan.</div>';
-    return '<div class="table-wrap"><table><thead><tr>'+headers.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>';
-  }
-  function transactionRows(list){
-    return table(list.map(t=>'<tr><td>'+safe(t.date)+'</td><td>'+safe(t.note||t.category)+'</td><td>'+safe(t.category)+'</td><td>'+safe(t.account)+'</td><td class="amount '+t.type+'">'+(t.type==='income'?'+':'−')+rupiah(t.amount)+'</td><td><button class="danger delete-tx" data-id="'+t.id+'" style="padding:6px 9px">Hapus</button></td></tr>'),['Tanggal','Catatan','Kategori','Rekening','Nominal','Aksi']);
-  }
-  function renderTransactions(){
-    const list=[...data.transactions].sort((a,b)=>b.date.localeCompare(a.date)||b.created-b.created);
-    document.querySelector('#recentTransactions').innerHTML=table(list.slice(0,5).map(t=>'<tr><td>'+safe(t.date)+'</td><td>'+safe(t.note||t.category)+'</td><td>'+safe(t.category)+'</td><td class="amount '+t.type+'">'+(t.type==='income'?'+':'−')+rupiah(t.amount)+'</td></tr>'),['Tanggal','Catatan','Kategori','Nominal']);
-    document.querySelector('#allTransactions').innerHTML=transactionRows(list);
-    document.querySelectorAll('.delete-tx').forEach(btn=>btn.addEventListener('click',()=>{if(confirm('Hapus transaksi ini?')){data.transactions=data.transactions.filter(t=>t.id!==btn.dataset.id);save();}}));
-  }
-  function renderDashboard(){
-    const m=monthNow(),month=data.transactions.filter(t=>t.date.startsWith(m));
-    const income=month.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
-    const expense=month.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
-    const allIncome=data.transactions.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
-    const allExpense=data.transactions.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
-    document.querySelector('#totalBalance').textContent=rupiah(allIncome-allExpense);
-    document.querySelector('#monthIncome').textContent=rupiah(income);
-    document.querySelector('#monthExpense').textContent=rupiah(expense);
-  }
-  function renderAccounts(){
-    const names=['Tunai','Rekening Bank','E-Wallet'];
-    document.querySelector('#accountList').innerHTML=table(names.map(name=>{
-      const relevant=data.transactions.filter(t=>t.account===name);
-      const bal=relevant.reduce((s,t)=>s+(t.type==='income'?t.amount:-t.amount),0);
-      return '<tr><td>'+name+'</td><td>'+relevant.length+' transaksi</td><td><strong>'+rupiah(bal)+'</strong></td></tr>';
-    }),['Rekening','Aktivitas','Saldo transaksi']);
-    const select=document.querySelector('#txAccount');const current=select.value;
-    select.innerHTML=names.map(n=>'<option>'+n+'</option>').join('');select.value=names.includes(current)?current:names[0];
-  }
-  function renderBudgets(){
-    const m=monthNow();
-    document.querySelector('#budgetList').innerHTML=table(data.budgets.map((b,i)=>{
-      const used=data.transactions.filter(t=>t.type==='expense'&&t.category===b.category&&t.date.startsWith(m)).reduce((s,t)=>s+t.amount,0);
-      const pct=Math.min(100,Math.round(used/b.amount*100));
-      return '<tr><td>'+safe(b.category)+'</td><td>'+rupiah(used)+' / '+rupiah(b.amount)+'<div style="height:6px;background:#edf3ef;border-radius:9px;margin-top:7px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+(used>b.amount?'#b33d42':'#166b50')+'"></div></div></td><td>'+pct+'%</td><td><button class="danger delete-budget" data-i="'+i+'" style="padding:6px 9px">Hapus</button></td></tr>';
-    }),['Kategori','Pemakaian bulan ini','Terpakai','Aksi']);
-    document.querySelectorAll('.delete-budget').forEach(b=>b.addEventListener('click',()=>{data.budgets.splice(Number(b.dataset.i),1);save();}));
-  }
-  function renderDebts(){
-    document.querySelector('#debtList').innerHTML=table(data.debts.map((d,i)=>'<tr><td>'+safe(d.type)+'</td><td>'+safe(d.name)+'</td><td>'+rupiah(d.amount)+'</td><td>'+(safe(d.due)||'—')+'</td><td><button class="danger delete-debt" data-i="'+i+'" style="padding:6px 9px">Hapus</button></td></tr>'),['Jenis','Keterangan','Nominal','Jatuh tempo','Aksi']);
-    document.querySelectorAll('.delete-debt').forEach(b=>b.addEventListener('click',()=>{data.debts.splice(Number(b.dataset.i),1);save();}));
-  }
-  function renderAssets(){
-    document.querySelector('#assetList').innerHTML=table(data.assets.map((a,i)=>'<tr><td>'+safe(a.name)+'</td><td>'+safe(a.note||'—')+'</td><td>'+rupiah(a.value)+'</td><td><button class="danger delete-asset" data-i="'+i+'" style="padding:6px 9px">Hapus</button></td></tr>'),['Aset','Catatan','Estimasi nilai','Aksi']);
-    document.querySelectorAll('.delete-asset').forEach(b=>b.addEventListener('click',()=>{data.assets.splice(Number(b.dataset.i),1);save();}));
-  }
-  function renderReport(){
-    const m=document.querySelector('#reportMonth').value||monthNow(),list=data.transactions.filter(t=>t.date.startsWith(m));
-    const income=list.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0),expense=list.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
-    const cats=[...new Set(list.filter(t=>t.type==='expense').map(t=>t.category))];
-    document.querySelector('#reportSummary').innerHTML='<div class="stats"><article class="stat"><div class="label">Pemasukan</div><div class="value">'+rupiah(income)+'</div></article><article class="stat"><div class="label">Pengeluaran</div><div class="value">'+rupiah(expense)+'</div></article><article class="stat"><div class="label">Selisih</div><div class="value">'+rupiah(income-expense)+'</div></article></div>'+table(cats.map(c=>'<tr><td>'+safe(c)+'</td><td>'+rupiah(list.filter(t=>t.type==='expense'&&t.category===c).reduce((s,t)=>s+t.amount,0))+'</td></tr>'),['Kategori pengeluaran','Total']);
-  }
-  function renderAll(){renderDashboard();renderTransactions();renderAccounts();renderBudgets();renderDebts();renderAssets();renderReport();}
-  function goto(view){
-    document.querySelectorAll('[id^="page-"]').forEach(el=>el.classList.add('hidden'));
-    document.querySelector('#page-'+view).classList.remove('hidden');
-    document.querySelectorAll('.nav').forEach(el=>el.classList.toggle('active',el.dataset.view===view));
-  }
-  document.querySelectorAll('.nav').forEach(btn=>btn.addEventListener('click',()=>goto(btn.dataset.view)));
-  document.querySelectorAll('[data-goto]').forEach(btn=>btn.addEventListener('click',()=>goto(btn.dataset.goto)));
-  document.querySelector('#quickAdd').addEventListener('click',()=>{goto('transactions');document.querySelector('#txAmount').focus();});
-  document.querySelector('#transactionForm').addEventListener('submit',e=>{
-    e.preventDefault();const amount=Number(document.querySelector('#txAmount').value);
-    if(!Number.isSafeInteger(amount)||amount<=0){alert('Nominal harus berupa bilangan rupiah positif.');return;}
-    data.transactions.push({id:crypto.randomUUID(),type:document.querySelector('#txType').value,date:document.querySelector('#txDate').value,amount,category:document.querySelector('#txCategory').value,account:document.querySelector('#txAccount').value,note:document.querySelector('#txNote').value.trim(),created:Date.now()});
-    e.target.reset();document.querySelector('#txDate').value=dateToday();save();
-  });
-  document.querySelector('#budgetForm').addEventListener('submit',e=>{e.preventDefault();const category=document.querySelector('#budgetCategory').value,amount=Number(document.querySelector('#budgetAmount').value);if(amount<=0)return;const old=data.budgets.find(b=>b.category===category);if(old)old.amount=amount;else data.budgets.push({category,amount});e.target.reset();save();});
-  document.querySelector('#debtForm').addEventListener('submit',e=>{e.preventDefault();data.debts.push({type:document.querySelector('#debtType').value,name:document.querySelector('#debtName').value.trim(),amount:Number(document.querySelector('#debtAmount').value),due:document.querySelector('#debtDue').value});e.target.reset();save();});
-  document.querySelector('#assetForm').addEventListener('submit',e=>{e.preventDefault();data.assets.push({name:document.querySelector('#assetName').value.trim(),value:Number(document.querySelector('#assetValue').value),note:document.querySelector('#assetNote').value.trim()});e.target.reset();save();});
-  document.querySelector('#reportMonth').addEventListener('change',renderReport);
-  const download=(filename,content,type)=>{const blob=new Blob([content],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);};
-  document.querySelector('#exportCsv').addEventListener('click',()=>{
-    const header=['tanggal','jenis','nominal','kategori','rekening','catatan'];
-    const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
-    const lines=[header,...data.transactions.map(t=>[t.date,t.type,t.amount,t.category,t.account,t.note])].map(row=>row.map(q).join(';'));
-    download('transaksi-keuangan.csv','\ufeff'+lines.join('\r\n'),'text/csv;charset=utf-8');
-  });
-  document.querySelector('#exportJson').addEventListener('click',()=>download('backup-keuangan.json',JSON.stringify({version:1,transactions:data.transactions,budgets:data.budgets,debts:data.debts,assets:data.assets},null,2),'application/json'));
-  document.querySelector('#importJson').addEventListener('change',async e=>{
-    const file=e.target.files?.[0];if(!file)return;
-    try{const imported=JSON.parse(await file.text());if(!imported||!Array.isArray(imported.transactions)||!Array.isArray(imported.budgets)||!Array.isArray(imported.debts)||!Array.isArray(imported.assets))throw new Error('Format file tidak cocok.');
-      if(confirm('Pulihkan data dari file ini? Data prototipe saat ini akan diganti.')){data=imported;save();alert('Data berhasil dipulihkan.');}
-    }catch(err){alert('Gagal memulihkan file: '+err.message);}finally{e.target.value='';}
-  });
-  renderAll();
-}
+
 </script>
 </body>
 </html>
