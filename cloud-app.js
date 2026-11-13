@@ -1,6 +1,8 @@
 export async function initSupabaseApp({supabase,userId,rupiah,dateToday,monthNow}){
   const status=document.querySelector('#cloudStatus');
   const transactionForm=document.querySelector('#transactionForm');
+  document.querySelector('#txDate').value=dateToday();
+  document.querySelector('#reportMonth').value=monthNow();
   const data={accounts:[],categories:[],transactions:[],budgets:[],debts:[],debt_payments:[],assets:[]};
   const defaultAccounts=[
     {name:'Tunai',account_type:'cash',opening_balance:0,currency:'IDR'},
