@@ -27,7 +27,7 @@ File `index.html` sudah ada di root repository agar bisa dilayani oleh GitHub Pa
 
 Di project Supabase, buka **Authentication → URL Configuration**.
 
-- **Site URL:** `https://zakkyzek.github.io/keuangan-pribadi/`
+- **Site URL:** `https://zakkyzek-coder.github.io/keuangan-pribadi/`
 - **Redirect URLs:** tambahkan `https://zakkyzek-coder.github.io/keuangan-pribadi/`
 - Jika ingin tes lokal, tambahkan juga `http://localhost:5500/**` dan buka situs memakai local web server, bukan langsung dari `file://`.
 
