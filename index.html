@@ -180,8 +180,9 @@ if(SUPABASE_PUBLISHABLE_KEY && !SUPABASE_PUBLISHABLE_KEY.includes('TEMPEL_')){
   const {data:{session}}=await supabase.auth.getSession();
   if(session) await showSignedIn(session.user);
   supabase.auth.onAuthStateChange((_event,session)=>{
-    if(session) showSignedIn(session.user);
-    else showSignedOut();
+    // Defer database work until after the auth callback has released its internal lock.
+    if(session) queueMicrotask(()=>{void showSignedIn(session.user);});
+    else queueMicrotask(()=>showSignedOut());
   });
 }else{
   setAuthMessage('Isi Supabase Publishable key untuk mengaktifkan login.');
