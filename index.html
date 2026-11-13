@@ -97,7 +97,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 // Public publishable/anon key belongs in a browser app; never use a service_role/secret key here.
 const SUPABASE_URL = 'https://oygogokxwmdcmaaccevc.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY = 'TEMPEL_PUBLISHABLE_KEY_DI_SINI';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_YtmZuZAnR5f1bhRNNf_PVA_lGkmuw-I';
 const authView = document.querySelector('#authView');
 const appView = document.querySelector('#appView');
 const authForm = document.querySelector('#authForm');
@@ -151,7 +151,8 @@ document.querySelector('#logoutBtn').addEventListener('click',async()=>{
   if(!supabase)return;
   const {error}=await supabase.auth.signOut();
   if(error){alert('Gagal keluar: '+error.message);return;}
-  showSignedOut();
+  // Reload clears prototype event handlers before another login in the same tab.
+  window.location.reload();
 });
 function showSignedOut(){initializedUserId=null;authView.classList.remove('hidden');appView.classList.add('hidden');}
 async function showSignedIn(user){
