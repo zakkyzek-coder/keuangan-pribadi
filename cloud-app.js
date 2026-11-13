@@ -200,35 +200,38 @@ export async function initSupabaseApp({supabase,userId,rupiah,dateToday,monthNow
   });
   document.querySelector('#budgetForm').addEventListener('submit',async event=>{
     event.preventDefault();
+    const form=event.currentTarget;
     const categoryId=document.querySelector('#budgetCategory').value,amount=Number(document.querySelector('#budgetAmount').value);
     if(!categoryId||!Number.isFinite(amount)||amount<0){alert('Pilih kategori dan masukkan nominal yang valid.');return;}
     const monthStart=monthNow()+'-01',existing=data.budgets.find(b=>b.category_id===categoryId&&b.month===monthStart);
-    const button=event.currentTarget.querySelector('button[type="submit"]');button.disabled=true;
+    const button=form.querySelector('button');button.disabled=true;
     try{
       if(existing)await unwrap(supabase.from('budgets').update({amount}).eq('id',existing.id).eq('user_id',userId));
       else await unwrap(supabase.from('budgets').insert({user_id:userId,category_id:categoryId,month:monthStart,amount}));
-      event.currentTarget.reset();await refreshAfterChange('Anggaran berhasil disimpan ke Supabase.');
+      form.reset();await refreshAfterChange('Anggaran berhasil disimpan ke Supabase.');
     }catch(error){alert('Anggaran gagal disimpan: '+error.message);}
     finally{button.disabled=false;}
   });
   document.querySelector('#debtForm').addEventListener('submit',async event=>{
     event.preventDefault();
+    const form=event.currentTarget;
     const name=document.querySelector('#debtName').value.trim(),amount=Number(document.querySelector('#debtAmount').value);
     if(!name||!Number.isFinite(amount)||amount<=0){alert('Isi keterangan dan nominal yang valid.');return;}
     const debtType=document.querySelector('#debtType').value;
     const row={user_id:userId,debt_type:debtType==='utang'?'payable':'receivable',person_name:name,title:name,original_amount:amount,outstanding_amount:amount,start_date:dateToday(),due_date:document.querySelector('#debtDue').value||null,status:'active'};
-    const button=event.currentTarget.querySelector('button[type="submit"]');button.disabled=true;
-    try{await unwrap(supabase.from('debts').insert(row));event.currentTarget.reset();await refreshAfterChange('Catatan utang/piutang tersimpan di Supabase.');}
+    const button=form.querySelector('button');button.disabled=true;
+    try{await unwrap(supabase.from('debts').insert(row));form.reset();await refreshAfterChange('Catatan utang/piutang tersimpan di Supabase.');}
     catch(error){alert('Catatan gagal disimpan: '+error.message);}
     finally{button.disabled=false;}
   });
   document.querySelector('#assetForm').addEventListener('submit',async event=>{
     event.preventDefault();
+    const form=event.currentTarget;
     const name=document.querySelector('#assetName').value.trim(),value=Number(document.querySelector('#assetValue').value);
     if(!name||!Number.isFinite(value)||value<0){alert('Isi nama aset dan nilai yang valid.');return;}
     const row={user_id:userId,name,asset_type:'other',estimated_value:value,notes:document.querySelector('#assetNote').value.trim()||null};
-    const button=event.currentTarget.querySelector('button[type="submit"]');button.disabled=true;
-    try{await unwrap(supabase.from('assets').insert(row));event.currentTarget.reset();await refreshAfterChange('Aset berhasil disimpan ke Supabase.');}
+    const button=form.querySelector('button');button.disabled=true;
+    try{await unwrap(supabase.from('assets').insert(row));form.reset();await refreshAfterChange('Aset berhasil disimpan ke Supabase.');}
     catch(error){alert('Aset gagal disimpan: '+error.message);}
     finally{button.disabled=false;}
   });
