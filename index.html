@@ -108,6 +108,7 @@ const authSubmit = document.querySelector('#authSubmit');
 const authToggle = document.querySelector('#authToggle');
 let isSignup = false;
 let supabase;
+let initializedUserId = null;
 
 function setAuthMessage(message, isError=false){authMessage.textContent=message;authMessage.style.color=isError?'#b33d42':'';}
 function requireConfig(){
@@ -152,10 +153,13 @@ document.querySelector('#logoutBtn').addEventListener('click',async()=>{
   if(error){alert('Gagal keluar: '+error.message);return;}
   showSignedOut();
 });
-function showSignedOut(){authView.classList.remove('hidden');appView.classList.add('hidden');}
+function showSignedOut(){initializedUserId=null;authView.classList.remove('hidden');appView.classList.add('hidden');}
 async function showSignedIn(user){
   authView.classList.add('hidden');appView.classList.remove('hidden');
   document.querySelector('.userbox .pill').textContent=user.email||'Akun aktif';
+  // Supabase can emit several auth events for the same session; initialise UI only once per user session.
+  if(initializedUserId===user.id) return;
+  initializedUserId=user.id;
   initLocalPrototype(user.id);
 }
 if(SUPABASE_PUBLISHABLE_KEY && !SUPABASE_PUBLISHABLE_KEY.includes('TEMPEL_')){
